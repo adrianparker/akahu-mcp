@@ -1,0 +1,41 @@
+{
+  "name": "akahu-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing the Akahu banking API as tools",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "akahu-mcp": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "NODE_ENV=test mocha",
+    "test:watch": "NODE_ENV=test mocha --watch",
+    "coverage": "c8 npm test",
+    "lint": "eslint ."
+  },
+  "keywords": [],
+  "author": "Adrian Parker",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "dotenv": "^17.2.3",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "c8": "^10.1.2",
+    "chai": "^6.2.2",
+    "mocha": "^10.2.0",
+    "sinon": "^17.0.1",
+    "eslint": "^9.9.0",
+    "globals": "^15.15.0",
+    "neostandard": "^0.11.0"
+  },
+  "c8": {
+    "reporter": ["text", "html"],
+    "exclude": ["test/**", "eslint.config.js"]
+  }
+}
