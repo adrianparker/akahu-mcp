@@ -63,7 +63,7 @@ async function createLogger (env) {
   ]
   if (config) {
     if (config.logToFile && config.logFilePath) {
-      const monthlyLogFilePath = getMonthlyLogFilePath(config.logFilePath)
+      const monthlyLogFilePath = path.resolve(import.meta.dirname, '..', getMonthlyLogFilePath(config.logFilePath))
       transports.push(
         new winston.transports.File({
           filename: monthlyLogFilePath,
@@ -82,7 +82,7 @@ async function createLogger (env) {
       transports
     })
     if (config.logToFile && config.logFilePath) {
-      loggerInstance.debug(`Logging to file: ${getMonthlyLogFilePath(config.logFilePath)}`)
+      loggerInstance.debug(`Logging to file: ${path.resolve(import.meta.dirname, '..', getMonthlyLogFilePath(config.logFilePath))}`)
     }
   } else {
     loggerInstance = winston.createLogger({
