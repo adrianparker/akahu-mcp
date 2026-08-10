@@ -8,12 +8,11 @@ transfers, the Prisma database).
 ## Features
 
 - `list_accounts` MCP tool / `akahu list-accounts` CLI command - every account Akahu has
-  access to, unrestricted.
-- `bank_list_accounts`, `bank_get_balance`, `bank_get_transactions` MCP tools - scoped to an
-  allowlist of aliases (`rabobank`, `westpac` out of the box; edit `src/bank-gateway.js` to
-  add your own).
-- `akahu balance <account>` / `akahu transactions <account>` CLI commands - the same data the
-  matching MCP tool returns, rendered as a human-readable table instead of JSON.
+  access to.
+- `bank_get_balance`, `bank_get_transactions` MCP tools - look up a specific account by its
+  Akahu account ID.
+- `akahu balance <account-id>` / `akahu transactions <account-id>` CLI commands - the same
+  data the matching MCP tool returns, rendered as a human-readable table instead of JSON.
 
 ## Installation
 
@@ -30,14 +29,10 @@ Fill in `.env`:
 NODE_ENV=app
 AKAHU_APP_TOKEN=app_token_...
 AKAHU_USER_TOKEN=user_token_...
-RABOBANK_ACCOUNT_ID=acc_...
-WESTPAC_ACCOUNT_ID=acc_...
 ```
 
-Get your Akahu tokens from [developers.akahu.nz](https://developers.akahu.nz). The account
-IDs are optional - leave them unset and the gateway falls back to matching by bank/connection
-name, but that's slower and throws if more than one connected account matches. The fastest way
-to find them is `npm run cli -- list-accounts`, which isn't restricted to the allowlist.
+Get your Akahu tokens from [developers.akahu.nz](https://developers.akahu.nz). Use
+`npm run cli -- list-accounts` to find the account IDs to pass to `balance`/`transactions`.
 
 ## Usage
 
@@ -74,14 +69,14 @@ process's cwd), so you don't need to pass tokens through the MCP client config.
 
 #### Tools
 
-- `list_accounts` - no arguments. Every account Akahu has access to, unrestricted.
-- `bank_list_accounts` - no arguments. Just the allowlisted accounts (`rabobank`, `westpac`).
-- `bank_get_balance` - `{ account: "rabobank" | "westpac", refresh?: boolean }`. `refresh: true`
-  asks Akahu to refresh from the bank first and waits ~10s.
-- `bank_get_transactions` - `{ account: "rabobank" | "westpac", start?: string, end?: string }`.
-  Dates are ISO 8601; `start` is exclusive, `end` is inclusive (Akahu's own semantics). Omit
-  both for everything the app can access. Paginates internally, so you always get the full
-  result in one call.
+- `list_accounts` - no arguments. Every account Akahu has access to.
+- `bank_get_balance` - `{ account: string, refresh?: boolean }`. `account` is the Akahu
+  account ID (see `list_accounts`). `refresh: true` asks Akahu to refresh from the bank
+  first and waits ~10s.
+- `bank_get_transactions` - `{ account: string, start?: string, end?: string }`. `account` is
+  the Akahu account ID. Dates are ISO 8601; `start` is exclusive, `end` is inclusive (Akahu's
+  own semantics). Omit both for everything the app can access. Paginates internally, so you
+  always get the full result in one call.
 
 ### From the command line
 
@@ -89,16 +84,35 @@ For a human, not an MCP client - same data, rendered as a table:
 
 ```
 npm run cli -- list-accounts
-npm run cli -- balance westpac
-npm run cli -- balance westpac --refresh
-npm run cli -- transactions westpac --start 2026-01-01 --end 2026-02-01
+npm run cli -- balance acc_...
+npm run cli -- balance acc_... --refresh
+npm run cli -- transactions acc_... --start 2026-01-01 --end 2026-02-01
 ```
 
-Or use the `akahu` bin directly once installed globally / linked:
+Or use the `akahu` bin directly once installed globally / linked, so you don't need the
+`npm run cli --` prefix:
 
 ```
-akahu balance westpac
+akahu balance acc_...
 ```
+
+To install globally from this checkout (picks up `package.json`'s `bin` entry):
+
+```
+npm install -g .
+```
+
+For development, `npm link` instead - it symlinks the global `akahu` bin back to this
+checkout, so edits to `src/cli.js` take effect immediately without reinstalling:
+
+```
+npm link
+```
+
+Either way, `.env` is resolved relative to the current working directory (via `dotenv.config()`
+in `src/cli.js`), not the checkout - so run `akahu` from a directory containing a filled-in
+`.env`, or export `AKAHU_APP_TOKEN`/`AKAHU_USER_TOKEN` in your shell. To remove a global
+install or link later: `npm uninstall -g akahu-mcp` (works for both).
 
 ## Development
 

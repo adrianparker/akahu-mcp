@@ -18,14 +18,12 @@ describe('cli', () => {
   beforeEach(() => {
     process.env.AKAHU_APP_TOKEN = 'app_token_test'
     process.env.AKAHU_USER_TOKEN = 'user_token_test'
-    process.env.WESTPAC_ACCOUNT_ID = 'acc_westpac'
     getStub = sinon.stub(axios, 'get')
     postStub = sinon.stub(axios, 'post')
   })
 
   afterEach(() => {
     sinon.restore()
-    delete process.env.WESTPAC_ACCOUNT_ID
   })
 
   describe('formatAccounts', () => {
@@ -48,8 +46,7 @@ describe('cli', () => {
 
   describe('formatBalance', () => {
     it('renders a single account balance', () => {
-      const output = formatBalance({ alias: 'westpac', id: 'acc_westpac', bank: 'Westpac', name: 'Bill Payments', balance: { current: 250, available: 250 } })
-      expect(output).to.include('westpac')
+      const output = formatBalance({ id: 'acc_westpac', bank: 'Westpac', name: 'Bill Payments', balance: { current: 250, available: 250 } })
       expect(output).to.include('acc_westpac')
       expect(output).to.include('$250.00')
     })
@@ -58,7 +55,7 @@ describe('cli', () => {
   describe('formatTransactions', () => {
     it('renders a table of transactions', () => {
       const output = formatTransactions({
-        alias: 'westpac',
+        account: { id: 'acc_westpac' },
         transactions: [{ date: '2026-01-01', description: 'Coffee', amount: -5, balance: 245 }]
       })
       expect(output).to.include('Coffee')
@@ -66,7 +63,7 @@ describe('cli', () => {
     })
 
     it('reports when there are no transactions', () => {
-      expect(formatTransactions({ alias: 'westpac', transactions: [] })).to.equal('No transactions found for westpac.')
+      expect(formatTransactions({ account: { id: 'acc_westpac' }, transactions: [] })).to.equal('No transactions found for acc_westpac.')
     })
   })
 
@@ -98,8 +95,8 @@ describe('cli', () => {
       getStub.resolves({ data: { success: true, item: westpacAccount } })
       const onOutput = sinon.spy()
       const program = buildProgram({ onOutput })
-      await program.parseAsync(['node', 'akahu', 'balance', 'westpac'])
-      expect(onOutput.firstCall.args[0]).to.include('westpac')
+      await program.parseAsync(['node', 'akahu', 'balance', 'acc_westpac'])
+      expect(onOutput.firstCall.args[0]).to.include('acc_westpac')
     })
 
     it('transactions prints the transactions table', async () => {
@@ -109,7 +106,7 @@ describe('cli', () => {
       })
       const onOutput = sinon.spy()
       const program = buildProgram({ onOutput })
-      await program.parseAsync(['node', 'akahu', 'transactions', 'westpac', '--start', '2026-01-01', '--end', '2026-02-01'])
+      await program.parseAsync(['node', 'akahu', 'transactions', 'acc_westpac', '--start', '2026-01-01', '--end', '2026-02-01'])
       expect(onOutput.firstCall.args[0]).to.include('Coffee')
     })
   })
@@ -119,9 +116,9 @@ describe('cli', () => {
       getStub.resolves({ data: { success: true, item: westpacAccount } })
       const logSpy = sinon.stub(console, 'log')
       try {
-        await runCli(['node', 'akahu', 'balance', 'westpac'])
+        await runCli(['node', 'akahu', 'balance', 'acc_westpac'])
         expect(logSpy.called).to.equal(true)
-        expect(logSpy.lastCall.args[0]).to.include('westpac')
+        expect(logSpy.lastCall.args[0]).to.include('acc_westpac')
       } finally {
         logSpy.restore()
       }

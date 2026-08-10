@@ -3,7 +3,7 @@ import { Command } from 'commander'
 import { renderTable } from 'console-table-printer'
 import stripAnsi from 'strip-ansi'
 import { listAccounts } from './accounts.js'
-import { getBalance, getTransactions, supportedAliases } from './bank-gateway.js'
+import { getBalance, getTransactions } from './bank-gateway.js'
 
 function formatMoney (amount) {
   return typeof amount === 'undefined' || amount === null ? 'N/A' : `$${amount.toFixed(2)}`
@@ -37,7 +37,6 @@ function formatAccounts (accounts) {
  */
 function formatBalance (result) {
   return stripAnsi(renderTable([{
-    Alias: result.alias,
     ID: result.id,
     Bank: result.bank,
     Name: result.name,
@@ -54,7 +53,7 @@ function formatBalance (result) {
  */
 function formatTransactions (result) {
   if (result.transactions.length === 0) {
-    return `No transactions found for ${result.alias}.`
+    return `No transactions found for ${result.account.id}.`
   }
   const rows = result.transactions.map(t => ({
     Date: t.date,
@@ -82,22 +81,22 @@ function buildProgram ({ onOutput = console.log } = {}) {
 
   program
     .command('balance')
-    .description('Get the current and available balance for one allowed account.')
-    .argument('<account>', `Account alias (${supportedAliases().join(', ')})`)
+    .description('Get the current and available balance for one account.')
+    .argument('<account-id>', 'Akahu account ID (see `list-accounts`)')
     .option('--refresh', 'Refresh from the bank before reading the balance (adds ~10 seconds).', false)
-    .action(async (account, options) => {
-      const result = await getBalance(account, { refresh: options.refresh })
+    .action(async (accountId, options) => {
+      const result = await getBalance(accountId, { refresh: options.refresh })
       onOutput(formatBalance(result))
     })
 
   program
     .command('transactions')
-    .description('Get settled transactions for one allowed account.')
-    .argument('<account>', `Account alias (${supportedAliases().join(', ')})`)
+    .description('Get settled transactions for one account.')
+    .argument('<account-id>', 'Akahu account ID (see `list-accounts`)')
     .option('--start <date>', 'ISO 8601 date/time, exclusive lower bound.')
     .option('--end <date>', 'ISO 8601 date/time, inclusive upper bound.')
-    .action(async (account, options) => {
-      const result = await getTransactions(account, { start: options.start, end: options.end })
+    .action(async (accountId, options) => {
+      const result = await getTransactions(accountId, { start: options.start, end: options.end })
       onOutput(formatTransactions(result))
     })
 

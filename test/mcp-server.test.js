@@ -19,21 +19,18 @@ describe('mcp-server', () => {
   beforeEach(() => {
     process.env.AKAHU_APP_TOKEN = 'app_token_test'
     process.env.AKAHU_USER_TOKEN = 'user_token_test'
-    process.env.WESTPAC_ACCOUNT_ID = 'acc_westpac'
     getStub = sinon.stub(axios, 'get')
     postStub = sinon.stub(axios, 'post')
   })
 
   afterEach(() => {
     sinon.restore()
-    delete process.env.WESTPAC_ACCOUNT_ID
   })
 
   describe('TOOLS', () => {
     it('declares the expected tool names', () => {
       expect(TOOLS.map(t => t.name)).to.deep.equal([
         'list_accounts',
-        'bank_list_accounts',
         'bank_get_balance',
         'bank_get_transactions'
       ])
@@ -47,23 +44,17 @@ describe('mcp-server', () => {
       expect(result[0].bank).to.equal('Westpac')
     })
 
-    it('dispatches bank_list_accounts', async () => {
-      getStub.resolves({ data: { success: true, item: westpacAccount } })
-      const result = await callTool('bank_list_accounts', {})
-      expect(result.map(r => r.alias)).to.have.members(['rabobank', 'westpac'])
-    })
-
     it('dispatches bank_get_balance', async () => {
       getStub.resolves({ data: { success: true, item: westpacAccount } })
-      const result = await callTool('bank_get_balance', { account: 'westpac' })
-      expect(result.alias).to.equal('westpac')
+      const result = await callTool('bank_get_balance', { account: 'acc_westpac' })
+      expect(result.id).to.equal('acc_westpac')
     })
 
     it('dispatches bank_get_transactions', async () => {
       getStub.onCall(0).resolves({ data: { success: true, item: westpacAccount } })
       getStub.onCall(1).resolves({ data: { success: true, items: [], cursor: {} } })
-      const result = await callTool('bank_get_transactions', { account: 'westpac', start: '2026-01-01' })
-      expect(result.alias).to.equal('westpac')
+      const result = await callTool('bank_get_transactions', { account: 'acc_westpac', start: '2026-01-01' })
+      expect(result.account.id).to.equal('acc_westpac')
     })
 
     it('defaults args to {} when omitted', async () => {
@@ -97,18 +88,19 @@ describe('mcp-server', () => {
         const callHandler = server._requestHandlers.get('tools/call')
         const callResult = await callHandler({
           method: 'tools/call',
-          params: { name: 'bank_get_balance', arguments: { account: 'westpac' } }
+          params: { name: 'bank_get_balance', arguments: { account: 'acc_westpac' } }
         }, {})
         const payload = JSON.parse(callResult.content[0].text)
-        expect(payload.alias).to.equal('westpac')
+        expect(payload.id).to.equal('acc_westpac')
 
+        getStub.resolves({ data: { success: true, item: null } })
         const errorResult = await callHandler({
           method: 'tools/call',
-          params: { name: 'bank_get_balance', arguments: { account: 'bnz' } }
+          params: { name: 'bank_get_balance', arguments: { account: 'acc_missing' } }
         }, {})
         expect(errorResult.isError).to.equal(true)
         const errorPayload = JSON.parse(errorResult.content[0].text)
-        expect(errorPayload.error).to.match(/Unknown account alias/)
+        expect(errorPayload.error).to.match(/No account found/)
 
         const noArgsResult = await callHandler({
           method: 'tools/call',

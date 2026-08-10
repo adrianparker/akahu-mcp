@@ -2,11 +2,9 @@ import winston from 'winston'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { listAllowedAccounts, getBalance, getTransactions, supportedAliases } from './bank-gateway.js'
+import { getBalance, getTransactions } from './bank-gateway.js'
 import { listAccounts } from './accounts.js'
 import { createLogger } from './logger.js'
-
-const ACCOUNT_ENUM = supportedAliases()
 
 const TOOLS = [
   {
@@ -19,24 +17,14 @@ const TOOLS = [
     }
   },
   {
-    name: 'bank_list_accounts',
-    description: 'List the bank accounts this server has been configured to allow (see supported aliases) with their current and available balance. Takes no arguments.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      additionalProperties: false
-    }
-  },
-  {
     name: 'bank_get_balance',
-    description: 'Get the current and available balance for one allowed bank account.',
+    description: 'Get the current and available balance for one bank account by its Akahu account ID. Use list_accounts to find the ID.',
     inputSchema: {
       type: 'object',
       properties: {
         account: {
           type: 'string',
-          enum: ACCOUNT_ENUM,
-          description: 'Which account to fetch.'
+          description: 'The Akahu account ID to fetch.'
         },
         refresh: {
           type: 'boolean',
@@ -49,14 +37,13 @@ const TOOLS = [
   },
   {
     name: 'bank_get_transactions',
-    description: 'Get settled (posted) transactions for one allowed bank account, optionally within a date range. Dates are ISO 8601 (e.g. "2026-06-01"). start is exclusive, end is inclusive, matching Akahu semantics. Omit both to get all transactions the app can access (up to its historical access window).',
+    description: 'Get settled (posted) transactions for one bank account by its Akahu account ID, optionally within a date range. Dates are ISO 8601 (e.g. "2026-06-01"). start is exclusive, end is inclusive, matching Akahu semantics. Omit both to get all transactions the app can access (up to its historical access window).',
     inputSchema: {
       type: 'object',
       properties: {
         account: {
           type: 'string',
-          enum: ACCOUNT_ENUM,
-          description: 'Which account to fetch.'
+          description: 'The Akahu account ID to fetch.'
         },
         start: {
           type: 'string',
@@ -77,8 +64,6 @@ async function callTool (name, args = {}) {
   switch (name) {
     case 'list_accounts':
       return listAccounts({ refresh: args.refresh })
-    case 'bank_list_accounts':
-      return listAllowedAccounts()
     case 'bank_get_balance':
       return getBalance(args.account, { refresh: args.refresh })
     case 'bank_get_transactions':
