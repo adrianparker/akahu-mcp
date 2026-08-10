@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import axios from 'axios'
-import { listAccounts } from '../src/accounts.js'
+import { listAccounts, getConnectionHealth } from '../src/accounts.js'
 
 const bnzAccount = {
   _id: 'acc_bnz',
@@ -43,14 +43,14 @@ describe('accounts', () => {
     getStub.resolves({ data: { success: true, items: [westpacAccount, bnzAccount] } })
     const result = await listAccounts()
     expect(result.map(a => a.bank)).to.deep.equal(['BNZ', 'Westpac'])
-    expect(result[0]).to.deep.equal({
+    expect(result[0]).to.deep.include({
       id: 'acc_bnz',
       bank: 'BNZ',
       name: 'Everyday',
       type: 'CHECKING',
-      balance: { current: 500, available: 500 },
       formattedAccount: '02-1234-5678900-00'
     })
+    expect(result[0].balance).to.deep.include({ current: 500, available: 500 })
   })
 
   it('handles an account with no available balance', async () => {
@@ -103,5 +103,102 @@ describe('accounts', () => {
     await clock.tickAsync(10000)
     await promise
     expect(postStub.calledWith('https://api.akahu.io/v1/refresh', {})).to.equal(true)
+  })
+
+  describe('getConnectionHealth', () => {
+    const now = new Date('2026-08-10T12:00:00.000Z')
+
+    const bnzChecking = {
+      _id: 'acc_bnz_1',
+      name: 'Everyday',
+      status: 'ACTIVE',
+      connection: { _id: 'conn_bnz', name: 'BNZ' },
+      refreshed: { balance: '2026-08-10T11:00:00.000Z', transactions: '2026-08-10T10:30:00.000Z' }
+    }
+    const bnzSavings = {
+      _id: 'acc_bnz_2',
+      name: 'Savings',
+      status: 'ACTIVE',
+      connection: { _id: 'conn_bnz', name: 'BNZ' },
+      refreshed: { balance: '2026-08-10T11:30:00.000Z', transactions: '2026-08-10T11:30:00.000Z' }
+    }
+    const westpacBroken = {
+      _id: 'acc_westpac',
+      name: 'Bill Payments',
+      status: 'INACTIVE',
+      connection: { _id: 'conn_westpac', name: 'Westpac' },
+      refreshed: { balance: '2026-08-08T12:00:00.000Z' }
+    }
+
+    it('groups accounts by connection and reports the stalest refresh on each', async () => {
+      getStub.resolves({ data: { success: true, items: [bnzChecking, bnzSavings, westpacBroken] } })
+      const result = await getConnectionHealth({ now })
+      expect(result).to.have.length(2)
+      // Most stale first: Westpac is 48 hours behind, BNZ 1.5.
+      expect(result[0]).to.deep.equal({
+        connection: 'conn_westpac',
+        bank: 'Westpac',
+        status: 'INACTIVE',
+        accountCount: 1,
+        inactiveAccounts: ['Bill Payments'],
+        balanceRefreshedAt: '2026-08-08T12:00:00.000Z',
+        transactionsRefreshedAt: null,
+        staleHours: 48
+      })
+      expect(result[1]).to.deep.equal({
+        connection: 'conn_bnz',
+        bank: 'BNZ',
+        status: 'ACTIVE',
+        accountCount: 2,
+        inactiveAccounts: [],
+        balanceRefreshedAt: '2026-08-10T11:00:00.000Z',
+        transactionsRefreshedAt: '2026-08-10T10:30:00.000Z',
+        staleHours: 1.5
+      })
+    })
+
+    it('reports a connection that has never refreshed rather than guessing at staleness', async () => {
+      getStub.resolves({
+        data: { success: true, items: [{ _id: 'acc_new', name: 'New', status: 'ACTIVE', connection: { _id: 'conn_new', name: 'ANZ' } }] }
+      })
+      const [result] = await getConnectionHealth({ now })
+      expect(result).to.deep.include({
+        balanceRefreshedAt: null,
+        transactionsRefreshedAt: null,
+        staleHours: null
+      })
+    })
+
+    const neverRefreshed = { _id: 'acc_new', name: 'New', status: 'ACTIVE', connection: { _id: 'conn_new', name: 'ANZ' } }
+
+    it('sorts a never-refreshed connection below one with a known staleness', async () => {
+      getStub.resolves({ data: { success: true, items: [neverRefreshed, westpacBroken] } })
+      const result = await getConnectionHealth({ now })
+      expect(result.map(c => c.bank)).to.deep.equal(['Westpac', 'ANZ'])
+    })
+
+    it('sorts the same way regardless of the order Akahu returns the accounts in', async () => {
+      getStub.resolves({ data: { success: true, items: [westpacBroken, neverRefreshed] } })
+      const result = await getConnectionHealth({ now })
+      expect(result.map(c => c.bank)).to.deep.equal(['Westpac', 'ANZ'])
+    })
+
+    it('buckets an account with no connection under "unknown"', async () => {
+      getStub.resolves({ data: { success: true, items: [{ _id: 'acc_x', name: 'X', status: 'ACTIVE' }] } })
+      const [result] = await getConnectionHealth({ now })
+      expect(result.connection).to.equal('unknown')
+      expect(result.bank).to.equal(null)
+    })
+
+    it('returns an empty array when there are no accounts', async () => {
+      getStub.resolves({ data: { success: true } })
+      expect(await getConnectionHealth({ now })).to.deep.equal([])
+    })
+
+    it('defaults the reference time to now', async () => {
+      getStub.resolves({ data: { success: true, items: [bnzSavings] } })
+      const [result] = await getConnectionHealth()
+      expect(result.staleHours).to.be.a('number')
+    })
   })
 })

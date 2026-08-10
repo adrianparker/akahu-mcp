@@ -45,6 +45,46 @@ async function getTransactionsForAccount (accountId, { start, end, cursor } = {}
 }
 
 /**
+ * Fetches a page of settled transactions across every account the app can access.
+ * Same `start`/`end`/`cursor` semantics as {@link getTransactionsForAccount}.
+ * @param {Object} [options] - Query options.
+ * @param {string} [options.start] - ISO 8601 date/time, exclusive lower bound.
+ * @param {string} [options.end] - ISO 8601 date/time, inclusive upper bound.
+ * @param {string} [options.cursor] - Pagination cursor from a previous page's `cursor.next`.
+ * @returns {Promise<Object>} The response data, including `items` and `cursor.next`.
+ */
+async function getTransactionsForUser ({ start, end, cursor } = {}) {
+  const params = new URLSearchParams()
+  if (start) params.set('start', start)
+  if (end) params.set('end', end)
+  if (cursor) params.set('cursor', cursor)
+  const qs = params.toString()
+  return doGet(`https://api.akahu.io/v1/transactions${qs ? '?' + qs : ''}`, 'All transactions')
+}
+
+/**
+ * Fetches pending (unsettled) transactions across every account the app can access.
+ * Not paginated - Akahu returns the full set in one response.
+ * @returns {Promise<Object>} The response data, including `items`.
+ */
+async function getPendingTransactions () {
+  return doGet('https://api.akahu.io/v1/transactions/pending', 'Pending transactions')
+}
+
+/**
+ * Fetches pending (unsettled) transactions for a single account. Not paginated.
+ * @param {string} accountId - The Akahu account ID to fetch pending transactions for.
+ * @returns {Promise<Object>} The response data, including `items`.
+ * @throws {Error} If the account ID is not provided or if the API call fails.
+ */
+async function getPendingTransactionsForAccount (accountId) {
+  if (!accountId) {
+    throw new Error('Account ID is required.')
+  }
+  return doGet(`https://api.akahu.io/v1/accounts/${accountId}/transactions/pending`, 'Pending transactions')
+}
+
+/**
  * Asks Akahu to refresh account data from the underlying bank connections.
  * @returns {Promise<Object>} The response data.
  */
@@ -107,4 +147,12 @@ async function doPost (url, params, label) {
   }
 }
 
-export { getAccounts, getAccount, getTransactionsForAccount, postRefresh }
+export {
+  getAccounts,
+  getAccount,
+  getTransactionsForAccount,
+  getTransactionsForUser,
+  getPendingTransactions,
+  getPendingTransactionsForAccount,
+  postRefresh
+}

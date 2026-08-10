@@ -32,8 +32,18 @@ describe('mcp-server', () => {
       expect(TOOLS.map(t => t.name)).to.deep.equal([
         'list_accounts',
         'bank_get_balance',
-        'bank_get_transactions'
+        'bank_get_transactions',
+        'bank_get_all_transactions',
+        'bank_get_pending_transactions',
+        'bank_get_connection_health'
       ])
+    })
+
+    it('declares an input schema for every tool that matches what callTool reads', () => {
+      for (const tool of TOOLS) {
+        expect(tool.inputSchema.type, tool.name).to.equal('object')
+        expect(tool.inputSchema.additionalProperties, tool.name).to.equal(false)
+      }
     })
   })
 
@@ -55,6 +65,27 @@ describe('mcp-server', () => {
       getStub.onCall(1).resolves({ data: { success: true, items: [], cursor: {} } })
       const result = await callTool('bank_get_transactions', { account: 'acc_westpac', start: '2026-01-01' })
       expect(result.account.id).to.equal('acc_westpac')
+    })
+
+    it('dispatches bank_get_all_transactions', async () => {
+      getStub.onCall(0).resolves({ data: { success: true, items: [{ _id: 't1', _account: 'acc_westpac', date: 'd', description: 'x', amount: 1 }] } })
+      getStub.onCall(1).resolves({ data: { success: true, items: [westpacAccount] } })
+      const result = await callTool('bank_get_all_transactions', { start: '2026-01-01' })
+      expect(result.count).to.equal(1)
+      expect(result.accounts.acc_westpac.bank).to.equal('Westpac')
+    })
+
+    it('dispatches bank_get_pending_transactions', async () => {
+      getStub.onCall(0).resolves({ data: { success: true, items: [] } })
+      getStub.onCall(1).resolves({ data: { success: true, items: [westpacAccount] } })
+      const result = await callTool('bank_get_pending_transactions', {})
+      expect(result.count).to.equal(0)
+    })
+
+    it('dispatches bank_get_connection_health', async () => {
+      getStub.resolves({ data: { success: true, items: [westpacAccount] } })
+      const result = await callTool('bank_get_connection_health', {})
+      expect(result[0].bank).to.equal('Westpac')
     })
 
     it('defaults args to {} when omitted', async () => {

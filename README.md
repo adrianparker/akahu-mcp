@@ -1,18 +1,26 @@
 # akahu-mcp
 
 MCP server exposing the Akahu banking API as tools - list accounts, get a balance, get
-transactions. Ported from [body-movin](https://github.com/adrianparker/body-movin)'s bank
-gateway, minus everything in that app unrelated to reading Akahu data (payments, sweeps,
-transfers, the Prisma database).
+settled and pending transactions, check connection health. 
+
+Every tool is read-only. This server backs an Akahu **personal app**, which by definition
+cannot make payments or subscribe to webhooks - the only side effect it can produce is asking
+Akahu to refresh from the bank, behind an explicit `refresh` flag.
 
 ## Features
 
-- `list_accounts` MCP tool / `akahu list-accounts` CLI command - every account Akahu has
-  access to.
-- `bank_get_balance`, `bank_get_transactions` MCP tools - look up a specific account by its
+### MCP Tools
+
+- `list_accounts` list every account Akahu has
+  access to, with balance, credit limit, status and last-refreshed timestamps.
+- `bank_get_balance`, `bank_get_transactions` look up a specific account by its
   Akahu account ID.
-- `akahu balance <account-id>` / `akahu transactions <account-id>` CLI commands - the same
-  data the matching MCP tool returns, rendered as a human-readable table instead of JSON.
+- `bank_get_all_transactions` - settled transactions across every account at once, for finding
+  a payment without knowing which account it went through.
+- `bank_get_pending_transactions` - money committed but not yet posted, which no balance
+  reflects yet.
+- `bank_get_connection_health` - whether each bank connection is still active, and how stale
+  its data is.
 
 ## Installation
 
@@ -69,7 +77,9 @@ process's cwd), so you don't need to pass tokens through the MCP client config.
 
 #### Tools
 
-- `list_accounts` - no arguments. Every account Akahu has access to.
+- `list_accounts` - `{ refresh?: boolean }`. Every account Akahu has access to, including
+  balance (current, available, limit, overdrawn, currency), status, attributes and when Akahu
+  last refreshed each one.
 - `bank_get_balance` - `{ account: string, refresh?: boolean }`. `account` is the Akahu
   account ID (see `list_accounts`). `refresh: true` asks Akahu to refresh from the bank
   first and waits ~10s.
@@ -77,6 +87,20 @@ process's cwd), so you don't need to pass tokens through the MCP client config.
   the Akahu account ID. Dates are ISO 8601; `start` is exclusive, `end` is inclusive (Akahu's
   own semantics). Omit both for everything the app can access. Paginates internally, so you
   always get the full result in one call.
+- `bank_get_all_transactions` - `{ start?: string, end?: string }`. The same settled
+  transactions, across every account in one sweep. Each row carries its `account` ID, and the
+  response includes an `accounts` lookup mapping those IDs to a bank and account name.
+- `bank_get_pending_transactions` - `{ account?: string }`. Pending (unsettled) transactions;
+  omit `account` for every account. Pending rows are not stable - date, description and amount
+  can all change before they settle, and they carry no ID. Payments made through Akahu itself
+  never appear here.
+- `bank_get_connection_health` - no arguments. Per bank connection: whether every account on it
+  is still `ACTIVE`, and how many hours since Akahu last pulled fresh balance and transaction
+  data. Most stale first.
+
+Transactions are returned enriched where Akahu has the data: `merchant`, `category`
+(NZFCC name plus its higher-level group), and `meta` with the `particulars`, `code`,
+`reference`, `otherAccount` and `cardSuffix` a NZ bank carries on a direct debit or credit.
 
 ### From the command line
 
@@ -87,6 +111,10 @@ npm run cli -- list-accounts
 npm run cli -- balance acc_...
 npm run cli -- balance acc_... --refresh
 npm run cli -- transactions acc_... --start 2026-01-01 --end 2026-02-01
+npm run cli -- all-transactions --start 2026-01-01 --end 2026-02-01
+npm run cli -- pending
+npm run cli -- pending acc_...
+npm run cli -- connection-health
 ```
 
 Or use the `akahu` bin directly once installed globally / linked, so you don't need the

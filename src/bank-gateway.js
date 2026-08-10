@@ -1,4 +1,13 @@
-import { getAccount, getTransactionsForAccount, postRefresh } from './akahu.js'
+import {
+  getAccount,
+  getAccounts,
+  getPendingTransactions,
+  getPendingTransactionsForAccount,
+  getTransactionsForAccount,
+  getTransactionsForUser,
+  postRefresh
+} from './akahu.js'
+import { shapeAccount, shapePendingTransaction, shapeTransaction } from './shape.js'
 import { createLogger } from './logger.js'
 
 /**
@@ -17,30 +26,43 @@ async function resolveAccount (accountId) {
   return account.item
 }
 
-function shapeAccount (account) {
-  return {
-    id: account._id,
-    bank: account.connection && account.connection.name,
-    name: account.name,
-    type: account.type,
-    balance: {
-      current: account.balance && account.balance.current,
-      available: account.balance && account.balance.available
-    },
-    formattedAccount: account.formatted_account
-  }
+/**
+ * Walks Akahu's transaction cursor until it is exhausted, shaping each page as it goes.
+ * Bounded so a wide date range can never page forever.
+ * @param {(cursor: string|undefined) => Promise<Object>} fetchPage - Fetches one page.
+ * @param {number} maxPages - Page ceiling; Akahu returns up to 100 transactions per page.
+ * @param {string} label - Identifies the request in the truncation warning.
+ * @returns {Promise<Array<Object>>} Shaped transactions.
+ */
+async function collectTransactions (fetchPage, maxPages, label) {
+  const logger = await createLogger(process.env.NODE_ENV)
+  const items = []
+  let cursor
+  let pages = 0
+  do {
+    const page = await fetchPage(cursor)
+    items.push(...(page.items || []).map(shapeTransaction))
+    cursor = (page.cursor && page.cursor.next) || null
+    pages++
+    if (pages >= maxPages && cursor) {
+      logger.warn(`Stopped paginating transactions for ${label} after ${maxPages} pages; results may be incomplete.`)
+      break
+    }
+  } while (cursor)
+  return items
 }
 
-function shapeTransaction (t) {
-  return {
-    id: t._id,
-    date: t.date,
-    description: t.description,
-    amount: t.amount,
-    balance: t.balance,
-    type: t.type,
-    merchant: t.merchant && t.merchant.name
-  }
+/**
+ * Builds an id -> { bank, name } lookup so callers can resolve the account ID carried
+ * on each transaction without a second round trip.
+ * @returns {Promise<Object>}
+ */
+async function buildAccountLookup () {
+  const accounts = await getAccounts()
+  return Object.fromEntries((accounts.items || []).map(account => [
+    account._id,
+    { bank: account.connection && account.connection.name, name: account.name }
+  ]))
 }
 
 /**
@@ -71,22 +93,14 @@ async function getBalance (accountId, { refresh = false } = {}) {
  * @returns {Promise<Object>}
  */
 async function getTransactions (accountId, { start, end } = {}) {
-  const logger = await createLogger(process.env.NODE_ENV)
   const account = await resolveAccount(accountId)
-  const items = []
-  let cursor
-  let pages = 0
-  const MAX_PAGES = 20 // 100 transactions/page; a personal bill account should never need more than this
-  do {
-    const page = await getTransactionsForAccount(account._id, { start, end, cursor })
-    items.push(...(page.items || []).map(shapeTransaction))
-    cursor = (page.cursor && page.cursor.next) || null
-    pages++
-    if (pages >= MAX_PAGES && cursor) {
-      logger.warn(`Stopped paginating transactions for '${accountId}' after ${MAX_PAGES} pages; results may be incomplete.`)
-      break
-    }
-  } while (cursor)
+  // 100 transactions/page; a personal bill account should never need more than this
+  const MAX_PAGES = 20
+  const items = await collectTransactions(
+    cursor => getTransactionsForAccount(account._id, { start, end, cursor }),
+    MAX_PAGES,
+    `account '${accountId}'`
+  )
   return {
     account: shapeAccount(account),
     start: start || null,
@@ -96,4 +110,58 @@ async function getTransactions (accountId, { start, end } = {}) {
   }
 }
 
-export { getBalance, getTransactions }
+/**
+ * Gets settled transactions across every account the app can access, in one paginated
+ * sweep. Each transaction carries its `account` ID; the returned `accounts` lookup maps
+ * those IDs to a bank and account name.
+ * @param {Object} [options]
+ * @param {string} [options.start] - ISO 8601 date/time, exclusive lower bound.
+ * @param {string} [options.end] - ISO 8601 date/time, inclusive upper bound.
+ * @returns {Promise<Object>}
+ */
+async function getAllTransactions ({ start, end } = {}) {
+  // A wider ceiling than the single-account path: this cursor aggregates every account.
+  const MAX_PAGES = 50
+  const items = await collectTransactions(
+    cursor => getTransactionsForUser({ start, end, cursor }),
+    MAX_PAGES,
+    'all accounts'
+  )
+  return {
+    start: start || null,
+    end: end || null,
+    count: items.length,
+    accounts: await buildAccountLookup(),
+    transactions: items
+  }
+}
+
+/**
+ * Gets pending (unsettled) transactions, either for one account or across all of them.
+ * Pending rows are not stable - date, description and amount can all change before the
+ * transaction settles, and it carries no ID to track it by.
+ * @param {Object} [options]
+ * @param {string} [options.account] - Akahu account ID. Omit for every account.
+ * @returns {Promise<Object>}
+ */
+async function getPending ({ account: accountId } = {}) {
+  if (accountId) {
+    const account = await resolveAccount(accountId)
+    const page = await getPendingTransactionsForAccount(account._id)
+    const items = (page.items || []).map(shapePendingTransaction)
+    return {
+      account: shapeAccount(account),
+      count: items.length,
+      transactions: items
+    }
+  }
+  const page = await getPendingTransactions()
+  const items = (page.items || []).map(shapePendingTransaction)
+  return {
+    count: items.length,
+    accounts: await buildAccountLookup(),
+    transactions: items
+  }
+}
+
+export { getBalance, getTransactions, getAllTransactions, getPending }

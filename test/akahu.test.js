@@ -1,7 +1,15 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import axios from 'axios'
-import { getAccounts, getAccount, getTransactionsForAccount, postRefresh } from '../src/akahu.js'
+import {
+  getAccounts,
+  getAccount,
+  getTransactionsForAccount,
+  getTransactionsForUser,
+  getPendingTransactions,
+  getPendingTransactionsForAccount,
+  postRefresh
+} from '../src/akahu.js'
 
 describe('akahu', () => {
   let getStub, postStub
@@ -83,6 +91,48 @@ describe('akahu', () => {
       expect(url).to.include('start=2026-01-01')
       expect(url).to.include('end=2026-02-01')
       expect(url).to.include('cursor=abc')
+    })
+  })
+
+  describe('getTransactionsForUser', () => {
+    it('builds a URL with no query string when no options are given', async () => {
+      getStub.resolves({ data: { success: true, items: [] } })
+      await getTransactionsForUser()
+      expect(getStub.firstCall.args[0]).to.equal('https://api.akahu.io/v1/transactions')
+    })
+
+    it('includes start, end and cursor in the query string when given', async () => {
+      getStub.resolves({ data: { success: true, items: [] } })
+      await getTransactionsForUser({ start: '2026-01-01', end: '2026-02-01', cursor: 'abc' })
+      const url = getStub.firstCall.args[0]
+      expect(url).to.include('start=2026-01-01')
+      expect(url).to.include('end=2026-02-01')
+      expect(url).to.include('cursor=abc')
+    })
+  })
+
+  describe('getPendingTransactions', () => {
+    it('fetches the pending transactions endpoint', async () => {
+      getStub.resolves({ data: { success: true, items: [] } })
+      await getPendingTransactions()
+      expect(getStub.firstCall.args[0]).to.equal('https://api.akahu.io/v1/transactions/pending')
+    })
+  })
+
+  describe('getPendingTransactionsForAccount', () => {
+    it('throws when no account id is provided', async () => {
+      try {
+        await getPendingTransactionsForAccount()
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.equal('Account ID is required.')
+      }
+    })
+
+    it('fetches the per-account pending transactions endpoint', async () => {
+      getStub.resolves({ data: { success: true, items: [] } })
+      await getPendingTransactionsForAccount('acc_1')
+      expect(getStub.firstCall.args[0]).to.equal('https://api.akahu.io/v1/accounts/acc_1/transactions/pending')
     })
   })
 
