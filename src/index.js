@@ -1,13 +1,18 @@
+import path from 'path'
 import dotenv from 'dotenv'
-import { createLogger } from './logger.js'
+import { startMcpServer } from './mcp-server.js'
 
-export function ping () {
-  return 'pong'
-}
+// Resolve .env relative to this file (not the launching process's cwd), so this works
+// regardless of where an MCP client spawns it from.
+dotenv.config({ path: path.resolve(import.meta.dirname, '..', '.env'), quiet: true })
 
+/* c8 ignore start - exercised by running the bin, not by unit tests */
 if (import.meta.url === `file://${process.argv[1]}`) {
-  dotenv.config()
-  const logger = await createLogger(process.env.NODE_ENV)
-  logger.debug('Starting akahu-mcp')
-  console.log(ping())
+  startMcpServer().catch(error => {
+    console.error('Fatal error starting MCP server:', error)
+    process.exit(1)
+  })
 }
+/* c8 ignore stop */
+
+export { startMcpServer }

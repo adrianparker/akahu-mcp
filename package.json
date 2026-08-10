@@ -5,13 +5,15 @@
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "akahu-mcp": "./src/index.js"
+    "akahu-mcp": "./src/index.js",
+    "akahu": "./src/cli.js"
   },
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "start": "node src/index.js",
+    "cli": "node src/cli.js",
     "test": "NODE_ENV=test mocha",
     "test:watch": "NODE_ENV=test mocha --watch",
     "coverage": "c8 npm test",
@@ -21,8 +23,12 @@
   "author": "Adrian Parker",
   "license": "AGPL-3.0-only",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.9.0",
     "commander": "^11.1.0",
+    "console-table-printer": "^2.14.1",
     "dotenv": "^17.2.3",
+    "strip-ansi": "^7.1.0",
     "winston": "^3.19.0"
   },
   "devDependencies": {

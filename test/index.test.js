@@ -1,8 +1,8 @@
 import { expect } from 'chai'
-import { ping } from '../src/index.js'
+import { startMcpServer } from '../src/index.js'
 
-describe('ping', () => {
-  it('returns pong', () => {
-    expect(ping()).to.equal('pong')
+describe('index', () => {
+  it('re-exports startMcpServer', () => {
+    expect(startMcpServer).to.be.a('function')
   })
 })
