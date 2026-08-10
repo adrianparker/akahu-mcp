@@ -63,12 +63,21 @@ describe('bank-gateway', () => {
   })
 
   describe('getBalance', () => {
-    it('refreshes first when refresh: true', async () => {
+    it('refreshes first when refresh: true, waiting for the refresh to land', async () => {
       clock = sinon.useFakeTimers()
-      postStub.resolves({ data: { success: true } })
-      getStub.resolves({ data: { success: true, item: westpacAccount } })
+      let refreshedAt = '2026-08-10T09:00:00.000Z'
+      postStub.callsFake(async () => {
+        refreshedAt = '2026-08-10T09:05:00.000Z'
+        return { data: { success: true } }
+      })
+      getStub.callsFake(async url => {
+        if (url === 'https://api.akahu.io/v1/accounts') {
+          return { data: { success: true, items: [{ ...westpacAccount, refreshed: { balance: refreshedAt } }] } }
+        }
+        return { data: { success: true, item: westpacAccount } }
+      })
       const promise = getBalance('acc_westpac', { refresh: true })
-      await clock.tickAsync(10000)
+      await clock.tickAsync(2000)
       const result = await promise
       expect(postStub.calledWith('https://api.akahu.io/v1/refresh', {})).to.equal(true)
       expect(result.id).to.equal('acc_westpac')
@@ -120,6 +129,14 @@ describe('bank-gateway', () => {
       }
       const result = await getTransactions('acc_westpac')
       expect(result.count).to.equal(20)
+      expect(result.truncated).to.equal(true)
+    })
+
+    it('reports truncated: false when every page was read', async () => {
+      getStub.onCall(0).resolves({ data: { success: true, item: westpacAccount } })
+      getStub.onCall(1).resolves({ data: { success: true, items: [], cursor: {} } })
+      const result = await getTransactions('acc_westpac')
+      expect(result.truncated).to.equal(false)
     })
   })
 
@@ -184,6 +201,7 @@ describe('bank-gateway', () => {
       })
       const result = await getAllTransactions()
       expect(result.count).to.equal(50)
+      expect(result.truncated).to.equal(true)
     })
   })
 

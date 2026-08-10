@@ -82,7 +82,7 @@ process's cwd), so you don't need to pass tokens through the MCP client config.
   last refreshed each one.
 - `bank_get_balance` - `{ account: string, refresh?: boolean }`. `account` is the Akahu
   account ID (see `list_accounts`). `refresh: true` asks Akahu to refresh from the bank
-  first and waits ~10s.
+  first, then polls until the refresh lands (up to 30s) before reading the balance.
 - `bank_get_transactions` - `{ account: string, start?: string, end?: string }`. `account` is
   the Akahu account ID. Dates are ISO 8601; `start` is exclusive, `end` is inclusive (Akahu's
   own semantics). Omit both for everything the app can access. Paginates internally, so you
@@ -101,6 +101,10 @@ process's cwd), so you don't need to pass tokens through the MCP client config.
 Transactions are returned enriched where Akahu has the data: `merchant`, `category`
 (NZFCC name plus its higher-level group), and `meta` with the `particulars`, `code`,
 `reference`, `otherAccount` and `cardSuffix` a NZ bank carries on a direct debit or credit.
+
+Both transaction tools paginate internally and return a `truncated` flag. If it is `true`
+the date range was too wide to return in full (20 pages per account, 50 across all
+accounts) and transactions are missing — narrow the range and call again.
 
 ### From the command line
 

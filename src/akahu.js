@@ -92,6 +92,51 @@ async function postRefresh () {
   return doPost('https://api.akahu.io/v1/refresh', {}, 'Refresh')
 }
 
+// Akahu's slowest normal response is well under 5s; without a ceiling a stalled bank
+// connection hangs an MCP tool call indefinitely, with no way for the client to recover.
+const TIMEOUT_MS = 30000
+
+/**
+ * Builds the auth headers Akahu expects. Read from the environment on every call rather
+ * than captured at module load, so a token can be swapped without a restart.
+ * @returns {Object}
+ */
+function buildHeaders () {
+  return {
+    accept: 'application/json',
+    Authorization: 'Bearer ' + process.env.AKAHU_USER_TOKEN,
+    'X-Akahu-Id': process.env.AKAHU_APP_TOKEN
+  }
+}
+
+/**
+ * Turns an axios failure into something a caller can act on. Raw axios messages read as
+ * "Request failed with status code 404", which tells whoever is reading the tool output
+ * nothing about what to do next. Anything unrecognised is passed through untouched.
+ * @param {Error} error - The error thrown by axios, or by the `success: false` check.
+ * @param {string} url - The URL that was being requested.
+ * @returns {Error}
+ */
+function describeError (error, url) {
+  const status = error.response && error.response.status
+  if (status === 401 || status === 403) {
+    return new Error(`Akahu rejected the credentials for ${url} (HTTP ${status}). Check AKAHU_APP_TOKEN and AKAHU_USER_TOKEN.`)
+  }
+  if (status === 404) {
+    return new Error(`Akahu has no record of ${url} (HTTP 404). The ID may be wrong, or the account may no longer be connected.`)
+  }
+  if (status === 429) {
+    return new Error(`Akahu rate limited ${url} (HTTP 429). Refreshes are limited to one per connection every 5 minutes, and roughly one an hour for a personal app. Wait and retry.`)
+  }
+  if (status >= 500) {
+    return new Error(`Akahu returned a server error for ${url} (HTTP ${status}). This is Akahu's end, not the request - retry shortly.`)
+  }
+  if (error.code === 'ECONNABORTED') {
+    return new Error(`Akahu did not respond to ${url} within ${TIMEOUT_MS / 1000}s.`)
+  }
+  return error
+}
+
 /**
  * Makes a GET request to the specified URL with the provided label for logging.
  * @param {string} url - The URL to send the GET request to.
@@ -101,21 +146,17 @@ async function postRefresh () {
  */
 async function doGet (url, label) {
   const logger = await createLogger(process.env.NODE_ENV)
-  const headers = {
-    accept: 'application/json',
-    Authorization: 'Bearer ' + process.env.AKAHU_USER_TOKEN,
-    'X-Akahu-Id': process.env.AKAHU_APP_TOKEN
-  }
   try {
-    const response = await axios.get(url, { headers })
+    const response = await axios.get(url, { headers: buildHeaders(), timeout: TIMEOUT_MS })
     logger.debug(`${label} successful: ${JSON.stringify(response.data, null, 2)}`)
     if (!response.data.success) {
       throw new Error('API call ' + url + ' failed: ' + response.data.message)
     }
     return response.data
   } catch (error) {
-    logger.error(`${label} error: ${error.message}`)
-    throw error
+    const described = describeError(error, url)
+    logger.error(`${label} error: ${described.message}`)
+    throw described
   }
 }
 
@@ -129,21 +170,17 @@ async function doGet (url, label) {
  */
 async function doPost (url, params, label) {
   const logger = await createLogger(process.env.NODE_ENV)
-  const headers = {
-    accept: 'application/json',
-    Authorization: 'Bearer ' + process.env.AKAHU_USER_TOKEN,
-    'X-Akahu-Id': process.env.AKAHU_APP_TOKEN
-  }
   try {
-    const response = await axios.post(url, params, { headers })
+    const response = await axios.post(url, params, { headers: buildHeaders(), timeout: TIMEOUT_MS })
     logger.debug(`${label} successful: ${JSON.stringify(response.data, null, 2)}`)
     if (!response.data.success) {
       throw new Error('API call ' + url + ' failed: ' + response.data.message)
     }
     return response.data
   } catch (error) {
-    logger.error(`${label} error: ${error.message}`)
-    throw error
+    const described = describeError(error, url)
+    logger.error(`${label} error: ${described.message}`)
+    throw described
   }
 }
 

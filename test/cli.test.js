@@ -169,12 +169,18 @@ describe('cli', () => {
 
     it('list-accounts --refresh refreshes first', async () => {
       const clock = sinon.useFakeTimers()
-      postStub.resolves({ data: { success: true } })
-      getStub.resolves({ data: { success: true, items: [westpacAccount] } })
+      let refreshedAt = '2026-08-10T09:00:00.000Z'
+      postStub.callsFake(async () => {
+        refreshedAt = '2026-08-10T09:05:00.000Z'
+        return { data: { success: true } }
+      })
+      getStub.callsFake(async () => ({
+        data: { success: true, items: [{ ...westpacAccount, refreshed: { balance: refreshedAt } }] }
+      }))
       const onOutput = sinon.spy()
       const program = buildProgram({ onOutput })
       const parsePromise = program.parseAsync(['node', 'akahu', 'list-accounts', '--refresh'])
-      await clock.tickAsync(10000)
+      await clock.tickAsync(2000)
       await parsePromise
       clock.restore()
       expect(postStub.called).to.equal(true)

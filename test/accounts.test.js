@@ -95,14 +95,21 @@ describe('accounts', () => {
     expect(result.map(r => r.id)).to.have.members(['acc_a', 'acc_b'])
   })
 
-  it('refreshes first when refresh: true', async () => {
+  it('refreshes first when refresh: true, waiting for the refresh to land', async () => {
     clock = sinon.useFakeTimers()
-    postStub.resolves({ data: { success: true } })
-    getStub.resolves({ data: { success: true, items: [] } })
+    let refreshedAt = '2026-08-10T09:00:00.000Z'
+    postStub.callsFake(async () => {
+      refreshedAt = '2026-08-10T09:05:00.000Z'
+      return { data: { success: true } }
+    })
+    getStub.callsFake(async () => ({
+      data: { success: true, items: [{ ...bnzAccount, refreshed: { balance: refreshedAt } }] }
+    }))
     const promise = listAccounts({ refresh: true })
-    await clock.tickAsync(10000)
-    await promise
+    await clock.tickAsync(2000)
+    const result = await promise
     expect(postStub.calledWith('https://api.akahu.io/v1/refresh', {})).to.equal(true)
+    expect(result[0].refreshed.balance).to.equal('2026-08-10T09:05:00.000Z')
   })
 
   describe('getConnectionHealth', () => {

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import winston from 'winston'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -5,6 +7,17 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { getAllTransactions, getBalance, getPending, getTransactions } from './bank-gateway.js'
 import { getConnectionHealth, listAccounts } from './accounts.js'
 import { createLogger } from './logger.js'
+
+/**
+ * Reads the server version from package.json rather than repeating it here, where it has
+ * already drifted from the real version once. Resolved against this file, not the cwd,
+ * since an MCP client can spawn the server from anywhere.
+ * @returns {string}
+ */
+function readVersion () {
+  const packagePath = path.resolve(import.meta.dirname, '..', 'package.json')
+  return JSON.parse(readFileSync(packagePath, 'utf8')).version
+}
 
 const TOOLS = [
   {
@@ -42,7 +55,7 @@ const TOOLS = [
   },
   {
     name: 'bank_get_transactions',
-    description: 'Get settled (posted) transactions for one bank account by its Akahu account ID, optionally within a date range. Dates are ISO 8601 (e.g. "2026-06-01"). start is exclusive, end is inclusive, matching Akahu semantics. Omit both to get all transactions the app can access (up to its historical access window).',
+    description: 'Get settled (posted) transactions for one bank account by its Akahu account ID, optionally within a date range. Dates are ISO 8601 (e.g. "2026-06-01"). start is exclusive, end is inclusive, matching Akahu semantics. Omit both to get all transactions the app can access (up to its historical access window). Check the truncated flag on the result: if true, the date range was too wide to return in full and transactions are missing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -65,7 +78,7 @@ const TOOLS = [
   },
   {
     name: 'bank_get_all_transactions',
-    description: 'Get settled (posted) transactions across every bank account at once, optionally within a date range. Use this instead of calling bank_get_transactions per account when searching for a payment without knowing which account it went through. Dates are ISO 8601 (e.g. "2026-06-01"). start is exclusive, end is inclusive, matching Akahu semantics. Each transaction carries an account ID, and the response includes an accounts lookup mapping those IDs to a bank and account name.',
+    description: 'Get settled (posted) transactions across every bank account at once, optionally within a date range. Use this instead of calling bank_get_transactions per account when searching for a payment without knowing which account it went through. Dates are ISO 8601 (e.g. "2026-06-01"). start is exclusive, end is inclusive, matching Akahu semantics. Each transaction carries an account ID, and the response includes an accounts lookup mapping those IDs to a bank and account name. Check the truncated flag on the result: if true, the date range was too wide to return in full and transactions are missing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -150,7 +163,7 @@ async function startMcpServer () {
   redirectConsoleLoggingToStderr(logger)
 
   const server = new Server(
-    { name: 'akahu-mcp', version: '0.3.0' },
+    { name: 'akahu-mcp', version: readVersion() },
     { capabilities: { tools: {} } }
   )
 

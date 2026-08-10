@@ -94,6 +94,101 @@ describe('akahu', () => {
     })
   })
 
+  describe('error mapping', () => {
+    const httpError = (status) => Object.assign(new Error(`Request failed with status code ${status}`), {
+      response: { status }
+    })
+
+    it('sends a request timeout so a stalled bank cannot hang the call forever', async () => {
+      getStub.resolves({ data: { success: true, items: [] } })
+      await getAccounts()
+      expect(getStub.calledWith(sinon.match.string, sinon.match({ timeout: 30000 }))).to.equal(true)
+    })
+
+    it('explains a 401 as a credentials problem', async () => {
+      getStub.rejects(httpError(401))
+      try {
+        await getAccounts()
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.match(/rejected the credentials/)
+        expect(error.message).to.include('AKAHU_APP_TOKEN')
+      }
+    })
+
+    it('explains a 403 as a credentials problem too', async () => {
+      getStub.rejects(httpError(403))
+      try {
+        await getAccounts()
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.match(/rejected the credentials/)
+      }
+    })
+
+    it('explains a 404 as an unknown or disconnected ID', async () => {
+      getStub.rejects(httpError(404))
+      try {
+        await getAccount('acc_nope')
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.match(/no record of/)
+        expect(error.message).to.include('acc_nope')
+      }
+    })
+
+    it('explains a 429 with the refresh rate limits', async () => {
+      postStub.rejects(httpError(429))
+      try {
+        await postRefresh()
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.match(/rate limited/)
+        expect(error.message).to.include('5 minutes')
+      }
+    })
+
+    it('explains a 500 as Akahu\'s problem, not the request\'s', async () => {
+      getStub.rejects(httpError(503))
+      try {
+        await getAccounts()
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.match(/server error/)
+      }
+    })
+
+    it('explains a timeout', async () => {
+      getStub.rejects(Object.assign(new Error('timeout of 30000ms exceeded'), { code: 'ECONNABORTED' }))
+      try {
+        await getAccounts()
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.match(/did not respond .* within 30s/)
+      }
+    })
+
+    it('passes an unrecognised failure through untouched', async () => {
+      getStub.rejects(new Error('socket hang up'))
+      try {
+        await getAccounts()
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.equal('socket hang up')
+      }
+    })
+
+    it('does not rewrite the success: false error, which carries Akahu\'s own message', async () => {
+      postStub.resolves({ data: { success: false, message: 'consent expired' } })
+      try {
+        await postRefresh()
+        expect.fail('expected error not thrown')
+      } catch (error) {
+        expect(error.message).to.include('consent expired')
+      }
+    })
+  })
+
   describe('getTransactionsForUser', () => {
     it('builds a URL with no query string when no options are given', async () => {
       getStub.resolves({ data: { success: true, items: [] } })

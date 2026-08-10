@@ -4,10 +4,10 @@ import {
   getPendingTransactions,
   getPendingTransactionsForAccount,
   getTransactionsForAccount,
-  getTransactionsForUser,
-  postRefresh
+  getTransactionsForUser
 } from './akahu.js'
 import { shapeAccount, shapePendingTransaction, shapeTransaction } from './shape.js'
+import { refreshAndWait } from './refresh.js'
 import { createLogger } from './logger.js'
 
 /**
@@ -32,13 +32,16 @@ async function resolveAccount (accountId) {
  * @param {(cursor: string|undefined) => Promise<Object>} fetchPage - Fetches one page.
  * @param {number} maxPages - Page ceiling; Akahu returns up to 100 transactions per page.
  * @param {string} label - Identifies the request in the truncation warning.
- * @returns {Promise<Array<Object>>} Shaped transactions.
+ * @returns {Promise<Object>} `{ items, truncated }` - `truncated` is true if the ceiling
+ *   was hit with pages still outstanding, so the caller can say so rather than quietly
+ *   reporting a total that is missing transactions.
  */
 async function collectTransactions (fetchPage, maxPages, label) {
   const logger = await createLogger(process.env.NODE_ENV)
   const items = []
   let cursor
   let pages = 0
+  let truncated = false
   do {
     const page = await fetchPage(cursor)
     items.push(...(page.items || []).map(shapeTransaction))
@@ -46,10 +49,11 @@ async function collectTransactions (fetchPage, maxPages, label) {
     pages++
     if (pages >= maxPages && cursor) {
       logger.warn(`Stopped paginating transactions for ${label} after ${maxPages} pages; results may be incomplete.`)
+      truncated = true
       break
     }
   } while (cursor)
-  return items
+  return { items, truncated }
 }
 
 /**
@@ -70,15 +74,12 @@ async function buildAccountLookup () {
  * @param {string} accountId
  * @param {Object} [options]
  * @param {boolean} [options.refresh] - If true, ask Akahu to refresh from the bank first
- *   and wait ~10s before reading the balance.
+ *   and wait for it to land before reading the balance.
  * @returns {Promise<Object>}
  */
 async function getBalance (accountId, { refresh = false } = {}) {
   if (refresh) {
-    const logger = await createLogger(process.env.NODE_ENV)
-    logger.debug('Refreshing before reading balance...')
-    await postRefresh()
-    await new Promise(resolve => setTimeout(resolve, 10000))
+    await refreshAndWait('reading balance')
   }
   const account = await resolveAccount(accountId)
   return shapeAccount(account)
@@ -96,7 +97,7 @@ async function getTransactions (accountId, { start, end } = {}) {
   const account = await resolveAccount(accountId)
   // 100 transactions/page; a personal bill account should never need more than this
   const MAX_PAGES = 20
-  const items = await collectTransactions(
+  const { items, truncated } = await collectTransactions(
     cursor => getTransactionsForAccount(account._id, { start, end, cursor }),
     MAX_PAGES,
     `account '${accountId}'`
@@ -106,6 +107,7 @@ async function getTransactions (accountId, { start, end } = {}) {
     start: start || null,
     end: end || null,
     count: items.length,
+    truncated,
     transactions: items
   }
 }
@@ -122,7 +124,7 @@ async function getTransactions (accountId, { start, end } = {}) {
 async function getAllTransactions ({ start, end } = {}) {
   // A wider ceiling than the single-account path: this cursor aggregates every account.
   const MAX_PAGES = 50
-  const items = await collectTransactions(
+  const { items, truncated } = await collectTransactions(
     cursor => getTransactionsForUser({ start, end, cursor }),
     MAX_PAGES,
     'all accounts'
@@ -131,6 +133,7 @@ async function getAllTransactions ({ start, end } = {}) {
     start: start || null,
     end: end || null,
     count: items.length,
+    truncated,
     accounts: await buildAccountLookup(),
     transactions: items
   }

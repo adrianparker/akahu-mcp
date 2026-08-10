@@ -1,21 +1,18 @@
-import { getAccounts, postRefresh } from './akahu.js'
+import { getAccounts } from './akahu.js'
 import { shapeAccount } from './shape.js'
-import { createLogger } from './logger.js'
+import { refreshAndWait } from './refresh.js'
 
 /**
  * Lists every account Akahu has access to, unrestricted (not limited to a bank-gateway
  * allowlist). Sorted by bank then account name.
  * @param {Object} [options]
  * @param {boolean} [options.refresh] - If true, ask Akahu to refresh from the bank first
- *   and wait ~10s before listing.
+ *   and wait for it to land before listing.
  * @returns {Promise<Array<Object>>}
  */
 async function listAccounts ({ refresh = false } = {}) {
   if (refresh) {
-    const logger = await createLogger(process.env.NODE_ENV)
-    logger.debug('Refreshing before listing accounts...')
-    await postRefresh()
-    await new Promise(resolve => setTimeout(resolve, 10000))
+    await refreshAndWait('listing accounts')
   }
   const accounts = await getAccounts()
   return (accounts.items || [])
