@@ -138,6 +138,23 @@ function describeError (error, url) {
 }
 
 /**
+ * Summarises a response body for the debug log. The bodies here are balances and transaction
+ * history, so serialising one verbatim writes a full bank statement into `logs/` the moment
+ * the log level drops to debug. Log the shape instead - a count, or the top-level key names,
+ * is enough to tell whether a call returned what was expected.
+ * @param {Object} data - The response body from Akahu.
+ * @returns {string} A summary with no account or transaction content in it.
+ */
+function describeBody (data) {
+  if (!data || typeof data !== 'object') return ''
+  if (Array.isArray(data.items)) {
+    const more = data.cursor && data.cursor.next ? ', more pages follow' : ''
+    return ` ${data.items.length} item(s)${more}`
+  }
+  return ` keys: ${Object.keys(data).join(', ')}`
+}
+
+/**
  * Makes a GET request to the specified URL with the provided label for logging.
  * @param {string} url - The URL to send the GET request to.
  * @param {string} label - A label for logging purposes.
@@ -148,7 +165,7 @@ async function doGet (url, label) {
   const logger = await createLogger(process.env.NODE_ENV)
   try {
     const response = await axios.get(url, { headers: buildHeaders(), timeout: TIMEOUT_MS })
-    logger.debug(`${label} successful: ${JSON.stringify(response.data, null, 2)}`)
+    logger.debug(`${label} successful:${describeBody(response.data)}`)
     if (!response.data.success) {
       throw new Error('API call ' + url + ' failed: ' + response.data.message)
     }
@@ -172,7 +189,7 @@ async function doPost (url, params, label) {
   const logger = await createLogger(process.env.NODE_ENV)
   try {
     const response = await axios.post(url, params, { headers: buildHeaders(), timeout: TIMEOUT_MS })
-    logger.debug(`${label} successful: ${JSON.stringify(response.data, null, 2)}`)
+    logger.debug(`${label} successful:${describeBody(response.data)}`)
     if (!response.data.success) {
       throw new Error('API call ' + url + ' failed: ' + response.data.message)
     }
